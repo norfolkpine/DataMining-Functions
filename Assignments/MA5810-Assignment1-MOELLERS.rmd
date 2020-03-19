@@ -1,0 +1,220 @@
+---
+title: "MA5810-Assignment1"
+author: "Nick Moellers"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Assignment Question
+Can we achieve a similar or even better classification performance with a much simpler classifier by
+removing irrelevant and/or redundant predictors via feature selection?
+
+### Install packages
+```{r packages}
+#install.packages("naivebayes")  #Uncomment if naivebayes is not already installed
+```
+
+### Load libraries
+```{r libraries}
+library(naivebayes)
+```
+
+### Load the data file
+```{r mushrooms}
+#load the data file
+Mushrooms <- read.csv(
+  "https://archive.ics.uci.edu/ml/machine-learning-databases/mushroom/agaricus-lepiota.data",
+  header=FALSE, sep=",", dec=".", na.strings=c("?"))
+summary(Mushrooms)
+
+#Suppress Warnings
+options( warn = -1 )
+
+```
+
+
+### Partitioning into train and test samples
+```{r partition}
+set.seed(0)
+
+# No. observations (8124)
+no_observations <- dim(Mushrooms)[1] 
+
+# No. predictors (22) = No. variables (23) - dependent var. (1st column)
+no_predictors <- dim(Mushrooms)[2] - 1 
+# 20% data for test
+Mushrooms.test.index <- sample(no_observations, size=as.integer(no_observations*0.2), replace=FALSE)
+# Remaining 80% data observations for training
+Mushrooms.train.index <- -Mushrooms.test.index 
+
+Mushrooms.train <- Mushrooms[Mushrooms.train.index, ]
+Mushrooms.test <- Mushrooms[Mushrooms.train.index, ]
+
+# Summary of Data sets
+summary(Mushrooms.train)
+summary(Mushrooms.test)
+```
+
+### Functions
+#### Calculate mean error
+```{r meanErrorFunction}
+meanError <- function(dataset, model) {
+  set.seed(0)
+  error <- 0
+
+  for (i in 1:10){  
+    # 20% data for test
+    test_index <- sample(no_observations, size=as.integer(no_observations*0.2), replace=FALSE)
+    # Remaining 80% data observations for training
+    training_index <- -test_index 
+    Pred_class <- predict(model, newdata = dataset[test_index, ])
+    
+    tab <- table(Pred_class, dataset[test_index,"V1"])
+    # Calculate Error Rate
+    accuracy <- sum(diag(tab))/sum(tab)
+    error <- error + (1 - accuracy)
+    
+
+  }
+  (error <- error/10)
+  print(error)
+}
+```
+
+### Wrapper Function
+```{r wrapperFunction}
+# Stepwise feature selection naive bayes wrapper
+#dataset is the available data (training dataset)
+#K equsals number of folds in cross-validation process
+
+wrapper <- function(dataset,K=10){
+
+  # Current dataset
+  cur.dataset <- dataset
+  cur.dataset <- cur.dataset[-c(1)] ##
+
+  # Current formula
+  cur.formula <- paste(colnames(dataset)[1],"~")
+  P <- ncol(cur.dataset)-1 ##
+
+  # Ordered index of the selected predictoror
+  output <- c()
+  # Create list for each error result
+  error <- c()
+  
+  for (p in 1:P){
+    # Create list for error rate at this step
+    cur.error <- c()
+
+    # Test Each candidate attribute
+    for (j in 1:(ncol(cur.dataset)-1)){
+      # Formula V1`~ V6
+      test.formula <- cur.formula
+      #print(test.formula)
+      
+      if (p > 1){test.formula <- paste(test.formula,"+")}
+      test.formula <- paste(test.formula,names(cur.dataset[j]))
+      test.formula2 <- as.formula(test.formula)
+
+      # Learn and Evaluate the model
+      ## take the current string being output, convert to formula 
+      # and put it into the error calculation
+      NaiveBayesModel <- naive_bayes(as.formula(test.formula), data = dataset)
+      # Get the error rate
+      errorResult <- meanError(Mushrooms, NaiveBayesModel)
+      cur.error[j] <- errorResult
+
+    }
+        
+    # Find the best error rate by getting the minimum result from vector list 
+    id.min <- which.min(cur.error)
+    selected.name <- colnames(cur.dataset)[id.min]
+    
+    # Add the id of the column into the selection
+    output[p] <- which.min(match(colnames(dataset),selected.name))
+    
+    # Remove the column from the current dataset
+    cur.dataset <- cur.dataset[-id.min]
+    
+    # Creating the formula
+    if (p > 1){cur.formula <- paste(cur.formula,"+")}
+    cur.formula <- paste(cur.formula,selected.name)
+    
+    #a Vector list of error rates
+    error[p] <- min(cur.error)
+    print(error[p])
+  }
+
+  return (list(error=error,output=output))
+}
+```
+
+### Running the wrapper process
+
+```{r runWrapper, results='hide'}
+Mushrooms.wrapper <- wrapper(Mushrooms.train)
+```
+Note that the `results = 'hide'` parameter was added to the code chunk to prevent printing of all error rates generated.
+
+
+#### Plot
+
+```{r plot, echo=FALSE}
+#plotting the error rate according the number of selected variables
+plot(Mushrooms.wrapper$error,type="b",main="Naive Bayes Wrapper Results",ylab="Error rate (%)",xlab="# selected predictors")
+
+```
+
+#### Get number of selected predictors
+
+```{r getPredictors}
+# Get number of selected predictors
+
+predictors.sel <- which.min(Mushrooms.wrapper$error)
+print(predictors.sel)
+
+```
+
+#### Create new datasets
+
+```{r newData}
+# New datasets: train and test
+Mushrooms.wrapper$output[1:predictors.sel]
+new.train <- Mushrooms.train[,c(1,Mushrooms.wrapper$output[1:predictors.sel],ncol(Mushrooms.train))]
+new.test <- Mushrooms.test[,c(1,Mushrooms.wrapper$output[1:predictors.sel],ncol(Mushrooms.test))]
+
+```
+
+#### Display selected predictors
+
+```{r displayPredictors}
+# Display names of selected predictors
+## Add 1 to compensate for removing V1 from variables/predictors
+predictors.sel <- predictors.sel + 1 
+cat("Selected variables: ", colnames(new.train)[2:predictors.sel])
+
+```
+
+#### Generate new models and calculate error rate
+
+```{r newModels}
+# New models for test and train datasets using the selected predictors
+new.model <- naive_bayes(V1 ~. , data = new.train)
+new.error <- meanError(new.test, new.model)
+
+```
+
+### Discussion
+After using the feature selection with the Naïve Bayes classifier as part, the mean error rate reduced from 0.057 to 0.0141 this represents an increase in the accuracy. Using feature selection adds time to the overall processing time, however once the features are selected the time to calculate error rate is reduced; this is especially useful for big data.
+  
+When using a small number of predictors, the accuracy is only slightly more accurate. As the number of features/predictors increases one can observe an increase in the accuracy. As the number of features approaches 22, the accuracy reduces. This is possibly due to an outlier. As such, to ensure accuracy the data scientist working with this data should run the model using the selected features.  
+  
+Other criteria could be to simple use the single predictor that was first calculated.  
+  
+Feature selection assists in improving the accuracy and decreasing training time. This is especially important in the field of Big Data, as additional milliseconds in processing time over each object can result in hours of additional processing time. In other experiments, an error rate of 5% may not be acceptable, but 1% may be acceptable. As such, a data scientist should get to know the data and learn what are the most important features by using methods such as feature selection. As can be seen from this experiment, running feature selection on the Naïve Bayes wrapper reduced the error rate to a negligible amount.  
+

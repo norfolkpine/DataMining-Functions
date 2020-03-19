@@ -1,0 +1,127 @@
+---
+title: "Feature (model) selection"
+author: "zilani"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+output: 
+    html_document:
+      theme: flatly 
+      highlight: tango
+      toc: true
+      toc_float: true
+
+---
+
+<style>
+h3 {
+  color: white;
+  background-color: #44546a;
+  text-indent: 25px; 
+</style>
+
+
+
+
+
+## Libraries to load
+```{r, warning=FALSE, message=FALSE}
+# library(limma)
+library(gplots)
+library(class)
+library(mlbench)
+library(caret)
+library(gplots)
+library (ISLR)
+library(caTools)
+library(naivebayes)
+
+```
+
+**#######################################################################################################**
+**#######################################   LECTUR FEATURE SELECTION  ###################################**
+
+
+
+## Feature selection and classification on Sonar dataset
+This is the data set used by Gorman and Sejnowski in their study of the classification of sonar signals using a neural network [1]. The task is to train a network to discriminate between sonar signals bounced off a metal cylinder and those bounced off a roughly cylindrical rock. Each pattern is a set of 60 numbers in the range 0.0 to 1.0. Each number represents the energy within a particular frequency band, integrated over a certain period of time. The integration aperture for higher frequencies occur later in time, since these frequencies are transmitted later during the chirp. The label associated with each record contains the letter "R" if the object is a rock and "M" if it is a mine (metal cylinder). The numbers in the labels are in increasing order of aspect angle, but they do not encode the angle directly.
+
+References
+Gorman, R. P., and Sejnowski, T. J. (1988). "Analysis of Hidden Units in a Layered Network Trained to Classify Sonar Targets" in Neural Networks, Vol. 1, pp. 75-89.
+
+Newman, D.J. & Hettich, S. & Blake, C.L. & Merz, C.J. (1998). UCI Repository of machine learning databases [http://www.ics.uci.edu/~mlearn/MLRepository.html]. Irvine, CA: University of California, Department of Information and Computer Science.
+
+
+```{r, warning=FALSE, message=FALSE}
+# load data
+library(mlbench)
+data(Sonar)
+dim(Sonar)
+```
+
+**### partition the data into training and testing sets**
+```{r}
+library(caret)
+set.seed(123)
+inTrain <- createDataPartition(Sonar$Class, p = .5)[[1]]
+SonarTrain <- Sonar[ inTrain,]
+SonarTest  <- Sonar[-inTrain,]
+```
+
+help(ncol)
+**## Wrapper feature selection**
+**### Forward stepwise selection**
+```{r}
+selectFeature <- function(train, test, cls.train, cls.test, features) {
+  ## identify a feature to be selected
+  current.best.accuracy <- -Inf
+  selected.i <- NULL
+  for(i in 1:ncol(train)) {
+    current.f <- colnames(train)[i]
+    if(!current.f %in% features) {
+      model <- knn(train=train[,c(features, current.f)], test=test[,c(features,     current.f)], cl=cls.train,k=3)
+      test.acc <- sum(model == cls.test) / length(cls.test)
+      
+      if(test.acc > current.best.accuracy) {
+        current.best.accuracy <- test.acc
+        selected.i <- colnames(train)[i]
+      }
+    }
+  }
+  return(selected.i)
+}
+
+
+
+
+##
+library(caret)
+set.seed(1)
+inTrain <- createDataPartition(Sonar$Class, p = .6)[[1]]
+allFeatures <- colnames(Sonar)[-61]
+train <- Sonar[ inTrain,-61]
+test  <- Sonar[-inTrain,-61]
+cls.train <- Sonar$Class[inTrain]
+cls.test <- Sonar$Class[-inTrain]
+
+# use correlation to determine the first feature
+cls.train.numeric <- rep(c(0, 1), c(sum(cls.train == "R"), sum(cls.train == "M")))
+features <- c()
+current.best.cor <- 0
+for(i in 1:ncol(train[,-61])) {
+  if(current.best.cor < abs(cor(train[,i], cls.train.numeric))) {
+    current.best.cor <- abs(cor(train[,i], cls.train.numeric))
+    features <- colnames(train)[i]
+  }
+}
+print(features)
+
+# select the 2 to 10 best features using knn as a wrapper classifier
+for (j in 2:10) {
+  selected.i <- selectFeature(train, test, cls.train, cls.test, features)
+  print(selected.i)
+
+  # add the best feature from current run
+  features <- c(features, selected.i)
+}
+```
+

@@ -1,0 +1,15 @@
+install.packages("naivebayes")
+
+Mushrooms <- read.csv("https://archive.ics.uci.edu/ml/machine-learning-databases/mushroom/aga
+ricus-lepiota.data", header=FALSE, sep=",", dec=".", na.strings=c("?"))
+summary(Mushrooms)
+
+set.seed(0)
+no_observations <- dim(Mushrooms)[1] # No. observations (8124)
+no_predictors <- dim(Mushrooms)[2] - 1 # No. predictors (22) = No. variables (23) - dependent var. (1st column)
+test_index <- sample(no_observations, size=as.integer(no_observations*0.2), replace=FALSE) #20% data for test
+training_index <- -test_index # Remaining 80% data observations for training
+
+library(naivebayes)
+NaiveBayesModel <- naive_bayes(V1 ~. , data = Mushrooms[training_index, ])
+warnings()

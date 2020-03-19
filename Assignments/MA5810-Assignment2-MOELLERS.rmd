@@ -1,0 +1,300 @@
+---
+title: "MA5810-Assignment2"
+author: "Nick Moellers"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction
+This assignment involves a bioinformatics problem, specifically, unsupervised clustering of gene-expression
+micro-array data. Two scenarios are considered:  
+- Clustering different tissue samples based on their gene-expression levels across multiple genes (Activity
+1)  
+- Clustering genes according to their gene-expression levels across multiple experimental conditions
+(Activity 2 and Activity 3).
+
+### Install packages
+```{r packages}
+#install.packages("naivebayes")  #Uncomment if naivebayes is not already installed
+#install.packages("foreign")
+```
+
+### Load libraries
+```{r libraries}
+library(naivebayes)
+library(foreign)
+library("dbscan")
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+```
+
+### 1. Read the dataset directly from the ARFF file into a data frame.
+```{r mushrooms}
+#load the data file
+setwd("C:\\Users\\nick.moellers\\OneDrive - James Cook University\\GraduateDiploma\\MA5810-DataMining\\A2")
+#1 Read Dataset
+Golub <- read.arff("golub-1999-v1_database.arff")
+
+```
+
+
+### 2. Set aside the rightmost column (containing the class labels) from the data
+```{r partition}
+# Get Index of last column
+no_predictors <- ncol(Golub) - 1
+ClassIndex <- ncol(Golub)
+Golub.Classe <- subset(Golub, select = c(ClassIndex))
+Golub.Data <- subset(Golub, select = -c(ClassIndex))
+
+```
+
+### 3. Use the data frame to compute a matrix containing all the pairwise Euclidean distances between observations. Use dist()
+```{r distmatrix}
+distMatrix <- dist(Golub.Data, method = "euclidean")
+```
+
+### 4. Use the distance matrix as input to call the Single-Linkage clustering algorithm available from the base 
+```{r }
+#R package stats and plot the resulting dendrogram. Do not use any class labels to perform this step.
+distMatrix.singleCluster <- hclust(distMatrix, method = "single")
+plot(distMatrix.singleCluster, main="Single-Linkage Cluster", hang = -1)
+```
+
+### 5. Use the distance matrix as input to call the Complete-Linkage clustering algorithm
+```{r }
+distMatrix.completeCluster <- hclust(distMatrix, method = "complete")
+plot(distMatrix.completeCluster, main="Complete-Linkage Cluster", hang = -1)
+
+```
+
+### 6. Use the distance matrix as input to call the Average-Linkage clustering algorithm
+```{r }
+distMatrix.averageCluster <- hclust(distMatrix, method = "average")
+plot(distMatrix.averageCluster, main="Average-Linkage Cluster", hang = -1)
+
+```
+
+### 7. Use the distance matrix as input to call Ward's clustering algorithm
+```{r }
+distMatrix.wardCluster <- hclust(distMatrix, method = "ward.D2")
+plot(distMatrix.wardCluster, main="Ward's Cluster", hang = -1)
+
+```
+
+### 8. Compare the dendrograms plotted in Items 4 to 7. Visually, the dendrograms suggest that some clustering algorithm(s) generate more clear clusters than the others. In your opinion, which algorithm(s) may we be referring to and why? In particular, in which aspects do the results produced by this/these algorithm(s) look more clear? Perform Item 9 below only for this/those algorithm(s).  
+
+Choices: Complete and Wards  
+
+In my opionion, one may be referring to Compelte and Ward's. Visually inspecting both dendograms in comparison to the others more evenly spreads the clusters. Visually, this is easier to read and identify clusters. In comparison to single and Average. Single is not clear,  because the majority is linking to that before causing crowding and difficulty in reading. I find average to be similar in that it is less clear than Ward and Complete.
+Wards is clear because it appears to halve the data each time and clusters, resulting in branches similar to a typical family tree.  
+Both Ward and complete are much more clear in showing the origin of clusters 1 and 2 and their relationships.
+
+
+### 9. Redraw the dendrogram(s) for the selected algorithm(s) in Item 8, now using the class labels that you stored separately in Item 2 to label the observations (as disposed along the horizontal axis of the dendrogram). Do some prominent clusters in the dendrogram(s) correspond approximately to the classes (that is, the two subtypes of leukemia)?  
+```{r }
+distMatrix.completeCluster$labels <- Golub.Classe$Classe
+plot(distMatrix.completeCluster, main="Complete-Linkage Cluster", hang = -1)
+
+distMatrix.wardCluster$labels <- Golub.Classe$Classe
+plot(distMatrix.wardCluster, main="Ward's Cluster", hang = -1)
+```
+### Detail any prominent clusters
+From the initial splitting of clusters, it is clear that the majority of data splits into clusters 1 and 2. Only a few subtypes are present that differentiate to the majority of subtypes in each of the first two branches/clusters. This clearly shows a correlation between the classes and clusters.
+
+### 10. Repeat the analysis, now using normalised data. The 1868 predictors have not been normalised before computing the distance matrix in Item 3.  
+Results were plotted with classe labels to identify clusters. 
+Normalisation worsens results, makign the clusters more difficult to identify as classes are more spread out rather than clearly clustered
+```{r }
+means = apply(Golub.Data,2,mean)
+sds = apply(Golub.Data,2,sd)
+norData <- scale(Golub.Data,center=means,scale=sds)
+#plot(norData)
+##Plotting
+distMatrix.norm <- dist(norData, method = "euclidean")
+##Single
+distMatrix.singleCluster.norm <- hclust(distMatrix.norm, method = "single")
+distMatrix.singleCluster.norm$labels <- Golub.Classe$Classe
+plot(distMatrix.singleCluster.norm, main="Single-Linkage Cluster Normalised", hang = -1)
+
+##Complete
+distMatrix.completeCluster.norm <- hclust(distMatrix.norm, method = "complete")
+distMatrix.completeCluster.norm$labels <- Golub.Classe$Classe
+plot(distMatrix.completeCluster.norm, main="Complete-Linkage Cluster Normalised", hang = -1)
+
+##Average
+distMatrix.averageCluster.norm <- hclust(distMatrix.norm, method = "average")
+distMatrix.averageCluster.norm$labels <- Golub.Classe$Classe
+plot(distMatrix.averageCluster.norm, main="Average-Linkage Cluster Normalised", hang = -1)
+
+##Ward
+distMatrix.wardCluster.norm <- hclust(distMatrix.norm, method = "ward.D2")
+distMatrix.wardCluster.norm$labels <- Golub.Classe$Classe
+plot(distMatrix.wardCluster.norm, main="Ward's Cluster Normalised", hang = -1)
+
+
+```
+
+## PART 2: 
+### 11. Read the dataset directly from the ARFF file into a data frame.
+
+```{r }
+Yeast <- read.arff("yeast.arff")
+
+```
+
+### 12. Set aside the rightmost column (containing the class labels) from the data
+```{r }
+# Get Index of last column
+no_predictors <- ncol(Yeast) - 1
+ClassIndex <- ncol(Yeast)
+Yeast.Classe <- subset(Yeast, select = c(ClassIndex))
+Yeast.Data <- subset(Yeast, select = -c(ClassIndex))
+
+```
+###  13. Use the data frame to compute a matrix containing all the pairwise Pearson-based dissimilarities between observations, that is, a matrix with dissimilarities between genes  according to their 20 expression measurements.
+```{r }
+Yeast.PearsonDM <- as.dist(1 - abs(cor(t(Yeast.Data),  method = "pearson")))/2
+summary(Yeast.PearsonDM)
+plot(Yeast.PearsonDM, main="Pearson-based dissimilarities")
+
+```
+
+###  14. Repeat the clustering analysis in Items 4 to 9 of Activity 1, now using the dissimilarity matrix for the  YeastGalactose data computed in Item 13 (and, when applicable, the class labels that you stored separately in Item 12 to label observations as disposed along the horizontal axis of the relevant dendrograms).
+
+### 14.4 Use the distance matrix as input to call the Single-Linkage clustering algorithm available from the base R package stats and plot the resulting dendrogram. Do not use any class labels to perform this step.
+
+```{r }
+Yeast.PearsonDM.singleCluster <- hclust(Yeast.PearsonDM, method = "single")
+plot(Yeast.PearsonDM.singleCluster, main="Single-Linkage Cluster", hang = -1)
+
+```
+
+### 14.5 Use the distance matrix as input to call the Complete-Linkage clustering algorithm  
+
+```{r }
+Yeast.PearsonDM.completeCluster <- hclust(Yeast.PearsonDM, method = "complete")
+plot(Yeast.PearsonDM.completeCluster, main="Complete-Linkage Cluster", hang = -1)
+
+
+```
+
+### 14.6 Use the distance matrix as input to call the Average-Linkage clustering algorithm  
+
+```{r }
+Yeast.PearsonDM.averageCluster <- hclust(Yeast.PearsonDM, method = "average")
+plot(Yeast.PearsonDM.averageCluster, main="Average-Linkage Cluster", hang = -1)
+
+```
+
+### 14.7 Use the distance matrix as input to call Ward's clustering algorithm  
+
+```{r }
+Yeast.PearsonDM.wardCluster <- hclust(Yeast.PearsonDM, method = "ward.D2")
+plot(Yeast.PearsonDM.wardCluster, main="Ward's Cluster", hang = -1)
+
+```
+
+### 14.8, 14.9
+
+```{r }
+Yeast.PearsonDM.wardCluster$labels <- Yeast.Classe$Classe
+
+plot(Yeast.PearsonDM.wardCluster, main="Ward's Cluster", hang = -1)
+plot(Yeast.PearsonDM.completeCluster, main="Complete Cluster", hang = -1)
+
+```
+
+##  PART 3:
+
+### 15. Rescale the data frame in a row-wise fashion so that each rescaled row has magnitude 1. You can achieve this by dividing each element of a row by the magnitude of the row.
+
+```{r }
+#Rescale Yeast.Data
+## create magnitude function
+magnitude <- function(x) {
+  sqrt(sum(x^2))
+}
+
+
+Yeast.Magnitudes <- apply(Yeast.Data,1,magnitude)
+Yeast.Rescale <- sweep(Yeast.Data,1,Yeast.Magnitudes,"/")
+
+max(Yeast.Rescale)
+Yeast.Data.HDB <- hdbscan(Yeast.Rescale, minPts = 5)
+
+```
+
+### Plot for each dendogram with and without class labels
+
+### With  
+
+```{r }
+Yeast.Data.HDB
+plot(Yeast.Data.HDB$hc, labels = Yeast.Classe$Class, hang =-1)
+
+```
+
+### Without
+
+```{r }
+plot(Yeast.Data.HDB)
+plot(Yeast.Data.HDB$hc, labels = FALSE, hang =-1)
+
+```
+
+### Contigency table  
+
+```{r }
+Yeast.Table <-table(Yeast.Data.HDB$cluster, labels =  Yeast.Classe$Classe)
+Yeast.Table
+
+```
+
+### 18. (a) What is the best correspondence between the four found clusters and the clusters according to the ground truth, that is, the best association between cluster labels ‘1’, ‘2’, ‘3’ and ‘4’ as named by HDBSCAN* and the four known functional categories ‘cluster1’, 'cluster2’, ‘cluster3’ and ‘cluster4’ as named in the ground truth? (b) What is the functional category for which most genes have been labelled as noise/outliers? Cluster 3 has been identified as haing the most noise/outliers  
+
+Cluster1 corresponds strongly to label 4, Cluster2 consists of 3 and 4 with the majority as 3, given Cluster1 relates to label 4, we can assume Cluster2 and label 3 are the same. Cluster3 conists mostly of noise (0) and label 2, indicating a strong correlation with label 2. Cluster 4 corresponds to label 1.  
+Cluster 3 has been identified as that which has the most noise.  
+
+### 19. Plot the genes grouped by their class labels (that is, functional categories ‘cluster1’, ‘cluster2’, ‘cluster3’ and ‘cluster4’), in such a way that all the genes belonging to the same class are plotted in a separate sub-figure (four sub-figures in total, each one in a different colour). Plot each gene as a time-series with 20 data points (where each point is connected by lines to its adjacent points in the series).
+
+```{r }
+Yeast.Rescale <- cbind(Yeast.Rescale, row_number = seq(1,nrow(Yeast.Rescale)))
+Yeast.Rescale <- cbind(Yeast.Rescale, cluster = Yeast.Classe$Class)
+
+df_melt <- melt(Yeast.Rescale, id.vars=c("row_number", "cluster" ) )
+ggplot(df_melt, aes(x = variable, y = value, group = row_number, colour=cluster),fill = as.factor(x)) + geom_line(stat= "identity") + facet_wrap(~cluster, ncol = 1, scales = "free")
+
+```
+
+### 20. Plot a figure analogous to the one in Item 19, but now with genes grouped in separate sub-figures according to their cluster as assigned by HDBSCAN* (‘1’, ‘2’, ‘3’ and ‘4’), rather than by class labels. Do not plot genes that were left unclustered as noise by HDBSCAN* (labelled ‘0’). Use the best class-tocluster association, as in your answer to Item 18, in order to assign each sub-figure of a cluster the same colour used in the sub-figure of the corresponding class in Item 19. For instance, supposing that the best association of class ‘clusterX’ in the ground truth is with HDBSCAN* cluster ‘Y’, according to the contingency table in Item 18, then if the genes belonging to class ‘clusterX’ have been plotted in red in Item 19, then the genes belonging to HDBSCAN* cluster ‘Y’ should also be plotted in red.
+  
+```{r }
+# add hdbs cluster type to rescaled df, remove where HDB.Cluster = 0
+Yeast.Rescale.dfmelt <- cbind(df_melt, HDB.Cluster = Yeast.Data.HDB$cluster)
+## use dplyr to filter where HDB .cluster = zero
+#Yeast.Rescale.dfmelt
+Yeast.Rescale.dfmelt <- filter(Yeast.Rescale.dfmelt,HDB.Cluster != 0)
+
+# plot hdbs.cluster
+ggplot(Yeast.Rescale.dfmelt, aes(x = variable, y = value, group = row_number, colour=cluster),fill = as.factor(x)) +
+    geom_line(stat= "identity") + facet_wrap(~HDB.Cluster, ncol = 1, scales = "free")
+
+```
+
+### 21. Compare the pairs of sub-figures with the same colour in the plots of Items 19 and 20.  
+### In particular: 
+### (a) Visually, do the genes in each cluster found by HDBSCAN* (that is, each sub-figure in Item 20) correspond reasonably well to the associated functional category in the ground truth (that is, the corresponding sub-figure in Item 19)? 
+Yes, the genes in each cluster show clear alignment with the associated functional groups. By colouring the lines in figure 20 the cluster colours used in figure 19, we see results that correspond to that which is seen in the contigency table. 
+
+### (b) Look at the contingency table for the functional categories that have had genes left unclustered as noise. Now look at the corresponding pairs of sub-figures in Items 19 and 20, noticing that these genes are plotted in Item 19 but not in Item 20.  
+### Does the removal of these genes make the most prominent pattern in each cluster visually more clear (which would indicate that those genes labelled as noise by HDBSCAN* are indeed outliers)?  
+Looking at the contigency table and figures 19 and 20, we see a clear correspondance between the two. Specifically, in functional category 4, we see the chart displaying results for both cluster 1 and 2, which is also seen in the contigency table.  
+The removal of noise also shows the most predominant changes between figures for Cluster2 and Cluster 3. Upon review of the contingency table, we also see it is these two categories that consist of the most noise.  
+The removal of these genes does in fact make the cluster visually more clear as can be seen in Figure 20, functional Category 3/Cluster 2. This results in the plotted lines following diverging less from one another. This suggests that the genes labelled as noise by HDBSCAN are indeed outliers.
+

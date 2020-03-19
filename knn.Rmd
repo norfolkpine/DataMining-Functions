@@ -1,0 +1,382 @@
+---
+title: "knn"
+author: "zilani"
+date: "23/07/2019"
+
+output: 
+    html_document:
+      theme: flatly 
+      highlight: tango
+      toc: true
+      toc_float: true
+---
+
+<style>
+h3 {
+  color: white;
+  background-color: #44546a;
+  text-indent: auto; 
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+```{r}
+library(ISLR)
+library(MASS)
+library(caret)
+set.seed(1)
+source("functions_w6.R")
+library(e1071)
+library(mlbench)
+library(class)
+
+```
+
+**#########################################################################################**
+
+# knn smarket data 
+
+**### test train split and build the model ----------------------------------------------**
+
+
+```{r}
+# using the smarket data from ISLR LIBRARY for knn classification
+# here the target variable is direction to determine whether price is moving up/down
+head(Smarket)
+```
+
+**we will use the test train split of the data based on the year of the stock price. since here we have 5 years of data we use the data upto 2004 as the training data and the rest mean 2005 data is being the test sample or holdout sample**
+
+```{r}
+
+set.seed(1)
+train<-(Smarket$Year<2005)
+
+# use the first two columns to explain the direction of smarket using cbind
+trainsmarket  <- cbind(Smarket$Lag1,Smarket$Lag2)[train,]
+testsmarket <- cbind(Smarket$Lag1,Smarket$Lag2)[-train,]
+
+# see the dimention of train and test
+dim(trainsmarket)
+dim(testsmarket)
+
+#making the class based on the train data and also see the length of it which has to be the same lenght of train data
+
+smarket_class_train=Smarket$Direction[train]
+length(smarket_class_train)
+
+#  build the knn model
+pred=knn(trainsmarket, testsmarket, smarket_class_train,k=3)
+```
+
+```{r}
+
+# prediction we made before is been checked with the 
+# actual value ofdirection.2005
+
+direction.2005<-Smarket$Direction[-train]
+table(pred,direction.2005)
+```
+
+
+```{r}
+# checking the accuricy where the accuricy is
+# 89.91%
+
+mean(pred==direction.2005)*100
+```
+
+**#### plot the optimum k value with the accuricy curv (smarket)**
+
+```{r}
+# what is the optimam k value
+# using k from 1 to 20 see the accuricy
+predicted.purchase = NULL
+accuricy.rate = NULL
+
+for(i in 1:20){
+    set.seed(1)
+    smarketpred = knn(trainsmarket,testsmarket,smarket_class_train,k=i)
+    accuricy.rate[i] = mean(smarketpred==direction.2005)
+}
+
+# print the rate of accuricy for various k value
+#put that in to a data frame
+# print the data frame
+print(accuricy.rate)
+k.values <- 1:20
+accuricy.df <- data.frame(accuricy.rate,k.values)
+
+accuricy.df
+```
+
+**#### PLOT THE CURB ----------------------**
+```{r}
+# plot the accuricy rate iris
+ggplot(accuricy.df,aes(x=k.values,y=accuricy.rate)) + geom_point()+ geom_line(lty="dotted",color='red')
+```
+
+
+
+**#########################################################################################**
+
+# knn caravan data 
+
+**#### ISLR data**
+
+**### test train split and build the model ----------------------------------------------**
+
+
+**this data is in ISLR package where the target variable is Parses?? yes or no mean the customes did bought the policy or not**
+
+**#### data preparation (caravan)--------------------------------**
+
+```{r}
+# structure of data file
+#str(Caravan)
+
+# summary of target variable
+summary(Caravan$Purchase)
+
+# check the null value
+any(is.na(Caravan))
+```
+
+**Because the KNN classifier predicts the class of a given test observation by identifying the observations that are nearest to it, the scale of the variables matters. Any variables that are on a large scale will have a much larger effect on the distance between the observations, and hence on the KNN classifier, than variables that are on a small scale.**
+
+```{r}
+# example there is a variance in two variables not standard
+# so need 
+var(Caravan[,1])
+var(Caravan[,2])
+```
+
+```{r}
+# save the Purchase column in a separate variable
+purchase <- Caravan[,86]
+
+# Standarize the dataset using "scale()" R function
+# using all the columns but the last/target columns
+standardized.Caravan <- scale(Caravan[,-86])
+```
+
+```{r}
+# lets check again
+var(standardized.Caravan[,1])
+var(standardized.Caravan[,2])
+```
+
+**### test train with knn (caravan) -------------------------------------------------**
+
+```{r}
+# another way of test train split
+# First 1000 rows for test set
+test.index <- 1:1000
+caravantest <- standardized.Caravan[test.index,]
+caravan_test_class <- purchase[test.index]
+
+# Rest of data for training
+caravantrain <- standardized.Caravan[-test.index,]
+caravan_train_class <- purchase[-test.index]
+
+# building knn
+set.seed(1)
+caravanpred <- knn(caravantrain,caravantest,caravan_train_class,k=5)
+
+# confusion matrix on test data class
+table(caravanpred,caravan_test_class)
+
+# checking the accuricy where the accuricy is
+# 88.2% good accuricy
+
+mean(caravanpred==caravan_test_class)*100
+
+```
+
+**### plot the optimum k value with the accuricy curv (caravan)-------------------------------**
+
+```{r}
+# what is the optimam k value
+# using k from 1 to 20 see the accuricy
+predicted.purchase = NULL
+accuricy.rate = NULL
+
+for(i in 1:20){
+    set.seed(1)
+    caravanpred = knn(caravantrain,caravantest,caravan_train_class,k=i)
+    accuricy.rate[i] = mean(caravanpred==caravan_test_class)
+}
+
+# print the rate of accuricy for various k value
+#put that in to a data frame
+# print the data frame
+print(accuricy.rate)
+k.values <- 1:20
+accuricy.df <- data.frame(accuricy.rate,k.values)
+
+accuricy.df
+```
+
+```{r}
+# plot the accuricy rate
+ggplot(accuricy.df,aes(x=k.values,y=accuricy.rate)) + geom_point()+ geom_line(lty="dotted",color='red')
+```
+
+
+**#########################################################################################**
+
+# knn iris data 
+
+**### test train split and build the model ----------------------------------------------**
+
+
+
+```{r}
+# spliting the iris data 70/30 split
+set.seed(1)
+
+library(caTools)
+
+sample <- sample.split(iris$Species, SplitRatio = .70)
+train <- subset(iris, sample == TRUE)
+test <- subset(iris, sample == FALSE)
+
+# length and dim of some important things
+dim(train)
+dim(test)
+length(train$Species)
+
+# predection of species in test data
+prediris <- knn(train[1:4],test[1:4],train$Species,k=4)
+
+# confusion matrix on test data class
+table(prediris,test$Species)
+
+# checking the accuricy where the accuricy is
+# 92% good accuricy
+accuricy<-mean(prediris==test$Species)*100
+print(paste('Accuricy is-----', accuricy, '%'))
+
+```
+
+
+
+**### plot the optimum k value with the accuricy curv (iris method-2) ------------**
+
+```{r}
+# what is the optimam k value
+# using k from 1 to 20 see the accuricy
+predicted.purchase = NULL
+accuricy.rate = NULL
+
+for(i in 1:20){
+    set.seed(1)
+    irispred = knn(train[1:4],test[1:4],train$Species,k=i)
+    accuricy.rate[i] = mean(irispred==test$Species)
+}
+
+# print the rate of accuricy for various k value
+#put that in to a data frame
+# print the data frame
+print(accuricy.rate)
+k.values <- 1:20
+accuricy.df <- data.frame(accuricy.rate,k.values)
+
+accuricy.df
+```
+
+```{r}
+# plot the accuricy rate iris
+ggplot(accuricy.df,aes(x=k.values,y=accuricy.rate)) + geom_point()+ geom_line(lty="dotted",color='red')
+```
+
+**#########################################################################################**
+
+# knn (Sonar) data
+
+**#### using 10 fold cross Validation ----------------------------------------------**
+
+
+```{r}
+data(Sonar)
+dim(Sonar)
+
+# create cross validation folds
+library(caret)
+set.seed(1)
+fold <- createFolds(Sonar$Class, k=10)
+
+# apply 10-fold cross-validation
+knn.TP <- knn.TN <- knn.FP <- knn.FN <- c()
+lda.TP <- lda.TN <- lda.FP <- lda.FN <- c()
+glm.TP <- glm.TN <- glm.FP <- glm.FN <- c()
+svm.line.TP <- svm.line.TN <- svm.line.FP <- svm.line.FN <- c()
+
+for(i in 1:length(fold)){
+    # true label for fold i
+    truth <- Sonar$Class[fold[[i]]]
+
+    # apply knn for classification
+    preds <- knn(Sonar[-fold[[i]],-61], Sonar[fold[[i]],-61], Sonar$Class[-fold[[i]]], k=5)
+    knn.TP <- c(knn.TP, sum((truth == preds)[truth == "M"]))
+    knn.TN <- c(knn.TN, sum((truth == preds)[truth == "R"]))
+    knn.FP <- c(knn.FP, sum((truth != preds)[truth == "R"]))
+    knn.FN <- c(knn.FN, sum((truth != preds)[truth == "M"]))
+    
+    
+}
+print("knn evaluation")
+evaluate(knn.TN, knn.FP, knn.TP, knn.FN)
+```
+
+
+
+**#########################################################################################**
+
+# knn (Ionosphere) data
+
+**#### using 10 fold cross Validation ----------------------------------------------**
+
+
+```{r}
+data(Ionosphere)
+df <- Ionosphere
+df <- df[,-2]
+df <- df[,-1]
+
+
+# apply 10-fold cross-validation
+fold <- createFolds(df$Class, k=10)
+knn.TP <- knn.TN <- knn.FP <- knn.FN <- c()
+
+
+for(i in 1:length(fold)){
+    # true label for fold i
+    truth <- df$Class[fold[[i]]]
+
+    # apply knn for classification
+    preds <- knn(df[-fold[[i]],-33], df[fold[[i]],-33], df$Class[-fold[[i]]], k=5)
+    knn.TP <- c(knn.TP, sum((truth == preds)[truth == "good"]))
+    knn.TN <- c(knn.TN, sum((truth == preds)[truth == "bad"]))
+    knn.FP <- c(knn.FP, sum((truth != preds)[truth == "bad"]))
+    knn.FN <- c(knn.FN, sum((truth != preds)[truth == "good"]))
+    
+    
+}
+print("knn evaluation")
+evaluate(knn.TN, knn.FP, knn.TP, knn.FN)
+```
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,242 @@
+---
+title: "MA5810-Assignment3"
+author: "Nick Moellers"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### **Introduction**
+This assignment involves a bioinformatics problem, specifically, unsupervised clustering of gene-expression
+micro-array data. Two scenarios are considered:  
+- Clustering different tissue samples based on their gene-expression levels across multiple genes (Activity
+1)  
+- Clustering genes according to their gene-expression levels across multiple experimental conditions
+(Activity 2 and Activity 3).
+
+#### **Install packages**
+```{r packages,warning=FALSE,message=FALSE}
+#install.packages("naivebayes")  #Uncomment if naivebayes is not already installed
+#install.packages("foreign")
+#install.packages("plot3D")
+
+```
+
+#### **Load libraries**
+```{r libraries,warning=FALSE,message=FALSE}
+library(naivebayes)
+library(foreign)
+library("dbscan")
+library(reshape2)
+library(ggplot2)
+library("plot3D")
+library(plotly)
+library(class)
+library(ROCR)
+
+```
+
+#### **1. Read the dataset directly from the ARFF file into a data frame.**
+```{r stamps}
+
+#load the data file
+#getwd()
+setwd("C:\\Users\\nick.moellers\\OneDrive - James Cook University\\GraduateDiploma\\MA5810-DataMining\\A3")
+
+Stamps <- read.table("Stamps_withoutdupl_09.csv", header=FALSE, sep=",", dec=".")
+summary(Stamps) # 9 Predictors (V1 to V9) and class labels (V10)
+PB_Predictors <- Stamps[,1:9] # 9 Predictors (V1 to V9)
+PB_class <- Stamps[,10] # Class labels (V10)
+PB_class <- ifelse(PB_class == 'no',0,1) # Inliers (class "no") = 0, Outliers (class "yes") = 1
+```
+
+
+### **Activity 1: Principal Component Analysis**
+#### **1. Perform Principal Component Analysis (PCA) on the Stamps data in the 9-dimensional space of the numerical predictors**
+```{r warning=FALSE}
+
+pcaStamps <- prcomp(PB_Predictors, scale. = TRUE) #PCA step
+pcaStamps
+#show the Proportion of Variance Explained (PVE) for each of the nine resulting principal components
+(PVE <- (pcaStamps$sdev^2)/sum(pcaStamps$sdev^2)) #PVE step
+
+##Plot the accumulated sum of PVE for the first m components, as a function of m, and discuss the result:  
+cumPVE <- cumsum(PVE)
+plotCumPVE <- qplot(c(1:9), cumPVE) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab(NULL) + 
+  ggtitle("Cumulative Sum PVE Plot") +
+  ylim(0,1)
+#grid.arrange(PVEplot, cumPVE, ncol = 2)
+plotCumPVE
+#cumsum(PVE)
+```
+
+##### **(a) How many components do we need to explain 90% or more of the total variance?**
+We need 6 components to explain 93% of the total variance. If we had only 5 components, it would be 87%.
+
+##### **(b) How much of the total variance is explained by the first three components?**  
+68.89% is explained by the first three components.
+
+#### **2. Plot a 3D scatter-plot of the Stamps data as represented by the first three principal components computed in the previous item ( x = PC1 , y = PC2 , and z = PC3 ).**
+```{r,,warning=FALSE,message=FALSE}
+#Select first three principal components
+pcaStamps.data3D <- as.data.frame(pcaStamps$x[,1:3])
+PB_class <- as.factor(PB_class)
+#Create data frame with first three principal components and class labels
+scatter.data <- cbind.data.frame(pcaStamps.data3D, PB_class)
+#Generate interactive plotly 3D scatter-plot
+p <- plot_ly(scatter.data, x = ~PC1 , y = ~PC2, z = ~PC3, color = ~PB_class)
+p
+
+#Output similar 3D plot using Scatter3D
+q <- scatter3D(x=scatter.data$PC1, y=scatter.data$PC2, z=scatter.data$PC3)
+#Scatter3D version, showing 3 different angles
+plotResult <- scatter3D(x=scatter.data$PC1, y=scatter.data$PC2, z=scatter.data$PC3, phi = 40, theta = 40)
+plotResult2 <- scatter3D(x=scatter.data$PC1, y=scatter.data$PC2, z=scatter.data$PC3, phi = 20, theta = 80)
+plotResult3 <- scatter3D(x=scatter.data$PC1, y=scatter.data$PC2, z=scatter.data$PC3, phi = 0, theta = 10)
+
+
+```
+
+
+##### **Do the outliers (forged stamps) look easy to detect in an unsupervised  way, assuming that the 3D visualisation of the data via PCA is a reasonable representation of the data in full space? How about in a supervised way? Why? Justify your answers.** 
+
+The outliers look easy to detect in an unsupervised way because the majority of stamps are clustered closely, those outside the cluster vary significantly in value, meaning anything outside of an acceptable range is an outlier; that is, the values deviate from the normal generating mechanisms within the cluster.  
+
+Also by colouring them in the plot it becomes visuallly easier to identify them. It is most beneficial looking at the 3D plot using plotly as it allows one to move the plot around and see the true position of outliers, by comparison when using a static version from scatter3D, depeth perception is distorted and it is not always clear which values are outliers.  
+In a supervised way, it would be easy to identify forged stamps, as they would generally be very similar to those marked as forged in the training datasets.
+
+
+### **Activity 2: Unsupervised outlier detection**
+**Perform unsupervised outlier detection on the Stamps data in the 9-dimensional space of the numerical predictors ( PB_Predictors ), using KNN Outlier with different values of the parameter (at least the following three: k =5,25,100 ). For each k, produce the same 3D PCA visualisation of the data as in Activity 1 (PCA),**
+**- use resulting KNN Outlier Scores as a continuous, diverging colour scale.**  
+**-- for each k, produce asecond plot **  
+**--- RED: top-31 outliers according to the KNN Outlier Scores**  
+**--- BLACK: other points**  
+**Do these plots give you any insights on the values of that look more or less appropriate from an unsupervised perspective (ignoring the class labels)? Justify your answer.**  
+
+```{r}
+library(dbscan)
+# create a loop
+kay <- c(5,25,100)
+n <- length(kay)
+for (var in 1:n){
+  # print k value
+  cat("K-value:", kay[var], fill = TRUE)
+  KNN_Outlier <- kNNdist(x=PB_Predictors, k = kay[var])[,var] # KNN distance (outlier score) computation
+
+  #print(var)
+  #The following code sorts the observations according to their KNN outlier scores and displays the top 20 outliers along with their scores:
+  top_n <- 31 # No. of top outliers to be displayed
+  rank_KNN_Outlier <- order(x=KNN_Outlier, decreasing = TRUE) # Sorting (descending)
+  KNN_Result <- data.frame(ID = rank_KNN_Outlier, score = KNN_Outlier[rank_KNN_Outlier])
+  
+  pcaStamps.data3D2 <- cbind.data.frame(pcaStamps.data3D, KNN_Result)
+  #Create dataframe of top n outliers
+  KNN_Result.top_n <- head(KNN_Result, top_n) 
+  # Merge top_n dataframe with pcaStamps dataframe
+  pcaStamps.data3D2 <- merge(pcaStamps.data3D2,KNN_Result.top_n, by  = "ID", all.x=TRUE)
+  #Top n results contain a value in one of the added columns, whilst the rest are marked as NA
+  # colour top n red, and NA's black
+  #Output colour
+  q1 <- scatter3D(x=pcaStamps.data3D2$PC1, y=pcaStamps.data3D2$PC2, z=pcaStamps.data3D2$PC3 )
+  q2 <- scatter3D(x=pcaStamps.data3D2$PC1, y=pcaStamps.data3D2$PC2, z=pcaStamps.data3D2$PC3, col = "red", colvar = pcaStamps.data3D2$score.y, NAcol = "black")
+  
+}
+
+
+```
+
+**Do these plots give you any insights on the values of k that look more or less appropriate from an unsupervised perspective (ignoring the class labels)? Justify your answer.**  
+Looking at the k values 5, 25, 100; there does not appear to be any significant variation, this may be due to the size of the dataset. In a larger dataset, changing k may alter the results more. As such, any of these values would be appropriate.
+
+### **Activity 3**
+##### **1. Perform supervised classification of the Stamps data, using a KNN classifier with the same values of as used in Activity 2 (unsupervised outlier detection). For each classifier (that is, each value of k), compute the Area Under the Curve ROC (AUC-ROC) in a Leave-One-Out Cross-Validation (LOOCV) scheme.**
+
+```{r, include = TRUE}
+#Create ROCPlot function for calculating AUC
+rocplot <- function(pred, truth){
+  predobj <- prediction(pred, truth)
+  ROC     <- performance(predobj, "tpr", "fpr")
+  # Plot the ROC Curve
+  plot(ROC)   
+  auc     <- performance(predobj, measure = "auc")
+  auc     <- auc@y.values[[1]]
+  # Return the Area Under the Curve ROC
+  return(auc) 
+}
+
+# create list of k values for loop to use
+kay <- c(5,25,100)
+n <- length(kay)
+for (var in 1:3){
+  #print(kay[var])  #debugging to show current k value
+  #k-nearest neighbour cross-validatory classification from training set
+  Pred_class <- knn.cv(train=PB_Predictors, cl=PB_class, k=kay[var], prob = TRUE)
+  Pred_prob <- attr(Pred_class, "prob")
+  # Make sure probabilities are for class "+"
+  Pred_prob <- ifelse(Pred_class=='+', Pred_prob, 1 - Pred_prob) 
+  AUC <- rocplot(pred=Pred_prob, truth=PB_class)
+  cat("K-value:", kay[var], ", AUC:", AUC, fill =TRUE) 
+}
+dim(PB_class)
+
+
+
+
+
+
+
+
+```
+
+
+#### **2. Compare the resulting (supervised) KNN classification performance for each value of k, against the classification performance obtained in an unsupervised way by the KNN Outlier method with the same value of k. Notice that, if we rescale the KNN Outlier Scores (obtained in Activity 2 (unsupervised outlier detection)) into the [0,1] interval, these scores can be interpreted as outlier probabilities, which can then be compared with the class labels (ground truth) in PB_class to compute an AUC-ROC value. This way, for each value of k, the AUC-ROC of the supervised KNN classifier can be compared with the AUC-ROC of KNN Outlier as an unsupervised classifier. Compare the performances of the supervised versus unsupervised classifiers and discuss the results. For example, recalling that the supervised method makes use of the class labels, whereas the unsupervised method doesn’t, what can you conclude considering there are applications where class labels are not available?**
+
+
+```{r}
+#supervised = classification
+#unsupervised = clustering
+
+#Create normalise data function
+normalise <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+
+#Create new data frame using normalised data
+PB_Predictors.normal <- as.data.frame(lapply(PB_Predictors, normalise))
+
+#List of k values to test
+kay <- c(5,25,100)
+#Get length of list
+n <- length(kay)
+#Loop through elements
+for (var in 1:n){
+  #print(kay[var])  #debugging to show current k value
+  #k-nearest neighbour cross-validatory classification from training set
+  Pred_class <- knn.cv(train=PB_Predictors.normal, cl=PB_class, k=kay[var], prob = TRUE)
+
+  # Get Prob attribute from Pred_Class
+  Pred_prob <- attr(Pred_class, "prob")
+  # Make sure probabilities are for class "+"
+  Pred_prob <- ifelse(Pred_class=='+', Pred_prob, 1 - Pred_prob) 
+  
+  #Calculate AUC value
+  AUC <- rocplot(pred=Pred_prob, truth=PB_class)
+  #Print K-Value alongside AUC
+  cat("K-value:", kay[var], ", AUC:", AUC, fill =TRUE)
+  }
+
+
+
+```
+Firstly, the supervised method was used on the k values: 5, 25, 100. This resulted in AUC values of 0.7075, 0.9626, 0.9310 respectively. The closer to AUC is to 1, the better the classifier. In our previous question, it was discussed that simply looking at the plot, it was not possible to identify any difference between the k values. Having calculated the AUC values, we can now see this is not the case. Using a k value of 25 or 100 is significantly more accurate than using a k value of 5, with the most accuracy being obtained by a K value of 25.  
+After normalising the data, the AUC values were: 0.7569, 0.9621, 0.9303; normalisation increased the accuracy for k=5 from 0.7075 to 0.7569, a difference of 0.0494  
+Likewise for k=25, k=100; the results had a negligble difference. From this one can deduce that the unsupervised methods are a suitable and accurate alternative where class labels are not available.
+
